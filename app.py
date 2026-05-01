@@ -1,78 +1,64 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
-import time
 
-from ai_engine import detect_waste, estimate_cost, estimate_co2
-from data import devices, usage_hours
+from data_stream import get_power_signal
+from nilm_engine import disaggregate_power, detect_anomaly
+from ai_copilot import energy_copilot
+from energy_score import calculate_score, score_label
 
-st.set_page_config(page_title="Smart Energy AI", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="NILM Energy AI", layout="wide")
 
-st.title("⚡ Smart Energy AI Dashboard")
-st.caption("AI-powered energy monitoring system")
+st.title("⚡ NILM Energy Intelligence Platform")
+st.caption("AI-based Non-Intrusive Load Monitoring System")
 
-page = st.sidebar.radio("Navigation", ["🏠 Dashboard", "📊 Insights", "⚠️ Alerts", "🔮 Prediction"])
-
-motion_detected = False
+page = st.sidebar.radio("Navigate", ["Dashboard", "AI Copilot", "Energy Score"])
 
 # ---------------- DASHBOARD ----------------
-if page == "🏠 Dashboard":
+if page == "Dashboard":
 
-    st.subheader("Live Energy Overview")
+    total_power = get_power_signal()
+    devices = disaggregate_power(total_power)
 
-    total_kwh = sum([(devices[d] * usage_hours[d]) / 1000 for d in devices])
-    total_cost = sum([estimate_cost(devices[d], usage_hours[d]) for d in devices])
+    st.subheader("Live Power Signal (Main Line)")
+    st.metric("Total Load", f"{total_power} W")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Energy", f"{round(total_kwh, 2)} kWh")
-    col2.metric("Estimated Bill", f"RM {round(total_cost, 2)}")
-    col3.metric("CO₂ Emission", f"{estimate_co2(total_kwh)} kg")
+    st.subheader("AI Disaggregated Devices")
 
-    st.divider()
+    for d, w in devices.items():
+        st.write(f"🔌 {d}: {w} W")
 
-    for d in devices:
-        st.write(f"🔌 {d} - {devices[d]}W ({usage_hours[d]} hrs)")
-        st.caption(detect_waste(d, devices[d], usage_hours[d], motion_detected))
-
-# ---------------- INSIGHTS ----------------
-if page == "📊 Insights":
-
-    st.subheader("Energy Breakdown")
+    st.subheader("AI Detection")
+    st.warning(detect_anomaly(devices))
 
     df = pd.DataFrame({
         "Device": list(devices.keys()),
-        "Usage": np.random.randint(10, 50, len(devices))
+        "Power": list(devices.values())
     })
 
-    fig = px.pie(df, names="Device", values="Usage", title="Energy Usage")
+    fig = px.bar(df, x="Device", y="Power", title="Energy Breakdown")
     st.plotly_chart(fig, use_container_width=True)
 
-    st.success("💡 AC is your highest energy consumer (52%)")
-    st.warning("⚠️ RM 18 wasted due to idle usage")
-    st.info("🌱 5kg CO₂ saved this week")
+# ---------------- COPILOT ----------------
+if page == "AI Copilot":
 
-# ---------------- ALERTS ----------------
-if page == "⚠️ Alerts":
+    st.subheader("🧠 Energy AI Copilot")
 
-    st.subheader("AI Waste Detection")
+    query = st.text_input("Ask your energy assistant:")
 
-    if st.button("Run AI Scan"):
-        with st.spinner("Analyzing energy patterns..."):
-            time.sleep(2)
+    if query:
+        total_power = get_power_signal()
+        response = energy_copilot(query, total_power)
 
-        st.error("⚠️ AC running in empty room for 2 hours")
-        st.warning("⚠️ High usage detected")
-        st.success("✔ System stable otherwise")
+        st.success(response)
 
-# ---------------- PREDICTION ----------------
-if page == "🔮 Prediction":
+# ---------------- ENERGY SCORE ----------------
+if page == "Energy Score":
 
-    st.subheader("Energy Forecasting")
+    st.subheader("🏠 Household Energy Score")
 
-    total_kwh = sum([(devices[d] * usage_hours[d]) / 1000 for d in devices])
-    predicted_bill = total_kwh * 0.6
+    total_kwh = get_power_signal() / 1000
+    score = calculate_score(total_kwh)
 
-    st.metric("Predicted Bill", f"RM {round(predicted_bill, 2)}")
-
-    st.info("🔮 Usage trend increasing by 8% weekly")
+    st.metric("Energy Score", score)
+    st.info(score_label(score))
